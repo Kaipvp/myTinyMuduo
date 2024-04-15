@@ -1,0 +1,47 @@
+muduo是基于reactor实现的
+
+关于EPOLLIN事件
+socket接收缓冲区   为空 低电平
+socket接收缓冲区 不为空 高电平
+
+关于EPOLLOUT事件
+socket发送缓冲区   为满 低电平
+socket发送缓冲区 不为满 高电平
+
+LT模式：水平触发
+高电平触发
+
+ET模式：边沿触发
+高电平->低电平 或
+低电平->高电平
+
+使用非阻塞的EPOLL-LT
+    开始不能对EPOLLOUT监听，否则一开始发送缓冲区为空，
+    EPOLLOUT为高电平，EPOLLOUT一直响应，造成busy-loop
+    应该在发送数据的时候发送缓冲区满了，但数据没有发完的时候监听EPOLLOUT,
+    当数据发送成功时，发送缓冲区不为满，低电平->高电平，EPOLLOUT触发
+    这时候发完了才从应用层缓冲区中取出数据继续发送,
+    当发送完数据之后，应该将EPOLLOUT监听去除
+
+使用非阻塞的EPOLL-ET
+    开始可以对EPOLLOUT监听
+    注意点：
+    在对读缓冲区读的时候需要将数据读完，
+        如读缓冲没有读完，EPOLLIN仍然是高电平，下次来数据的时候还是高电平，EPOLLIN不会触发
+    在对写缓冲区写的时候，如果应用层缓冲区数据100M,内核写缓冲区大小20M,但此时只写入10M,
+        这个时候发送缓冲区不为满，为高电平，发送数据之后，仍然是高电平，此时EPOLLOUT不会触发
+/*
+    Socket对象管理socket的bind,listen,accept等方法，
+    但是创建一个socket是在Acceptor里面创建的,
+    也就是说Socket虽然存储了sockfd，但是初始化是在Acceptor里面创建的
+*/
+
+/*
+    Acceptor的重要作用是初始化一个Socket对象和一个Channel,
+    其中Socket就是sockfd（监听套接字），Channel就是acceptChannel（sockfd对应的channel）,
+    前面介绍过每个文件描述符都对应一个Channel,所以说sockfd也需要一个Channel,
+    Acceptor初始化的时候就绑定了回调函数，就是accept查看有没有新连接请求，
+    这里的accept本质上是调用了Socket类的accept方法,
+    如果有新事件发生，则说明sockfd有新的连接请求，
+    此时会在acceptSocket_.accept()中记录返回的通信套接字，并记录客户端的地址结构
+*/
